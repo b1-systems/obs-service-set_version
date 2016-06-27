@@ -47,25 +47,22 @@ def _get_local_files():
     return files
 
 
-class VersionDetector(object):
+class ReleaseDetector(object):
     @staticmethod
-    def _autodetect(files, basename):
-        version = VersionDetector._get_version_via_archive_dirname(
-            files, basename)
-        if not version:
-            version = VersionDetector._get_version_via_filename(
-                files, basename)
-        if not version:
-            version = VersionDetector._get_version_via_debian_changelog(
-                "debian.changelog")
-        return version
+    def _autodetect(files, basename, regex_release):
+        release = ReleaseDetector._get_release_via_archive_dirname(
+            files, basename, regex_release)
+        if not release:
+            release = ReleaseDetector._get_release_via_filename(
+                files, basename, regex_release)
+        return release
 
     @staticmethod
-    def _get_version_via_filename(files, basename):
-        """ detect version based on file names"""
+    def _get_release_via_filename(files, basename, regex_release):
+        """ detect release based on file names"""
         for f in files:
-            regex = r"^%s.*[-_]([\d].*)\.(?:%s)$" % (re.escape(basename),
-                                                     suffixes_re)
+            regex = r"^%s.*%s.*\.(?:%s)$" % (re.escape(basename),
+                                             regex_release, suffixes_re)
             m = re.match(regex, f)
             if m:
                 return m.group(1)
@@ -73,8 +70,8 @@ class VersionDetector(object):
         return None
 
     @staticmethod
-    def __get_version(str_list, basename):
-        regex = "%s.*[-_]([\d][^\/]*).*" % basename
+    def __get_release(str_list, basename, regex_release):
+        regex = r"^%s.*%s.*$" % (re.escape(basename), regex_release)
         for s in str_list:
             m = re.match(regex, s)
             if m:
@@ -83,13 +80,77 @@ class VersionDetector(object):
         return None
 
     @staticmethod
-    def _get_version_via_archive_dirname(files, basename):
+    def _get_release_via_archive_dirname(files, basename, regex_release):
+        """ detect release based tar'd directory name"""
+        for f in filter(lambda x: x.endswith(suffixes), files):
+            # handle tarfiles
+            if tarfile.is_tarfile(f):
+                with tarfile.open(f) as tf:
+                    v = ReleaseDetector.__get_release(tf.getnames(), basename,
+                                                      regex_release)
+                    if v:
+                        return v
+            # handle zipfiles
+            if zipfile.is_zipfile(f):
+                with zipfile.ZipFile(f, 'r') as zf:
+                    v = ReleaseDetector.__get_release(zf.namelist(), basename)
+                    if v:
+                        return v
+        # Nothing found
+        return None
+
+
+class VersionDetector(object):
+    @staticmethod
+    def _autodetect(files, basename, regex_version = None):
+        version = VersionDetector._get_version_via_archive_dirname(
+            files, basename, regex_version)
+        if not version:
+            version = VersionDetector._get_version_via_filename(
+                files, basename, regex_version)
+        if not version:
+            version = VersionDetector._get_version_via_debian_changelog(
+                "debian.changelog")
+        return version
+
+    @staticmethod
+    def _get_version_via_filename(files, basename, regex_version = None):
+        """ detect version based on file names"""
+        if regex_version:
+            regex = r"^%s.*%s.*\.(?:%s)$" % (re.escape(basename),
+                                             regex_version, suffixes_re)
+        else:
+            regex = r"^%s.*[-_]([\d].*)\.(?:%s)$" % (re.escape(basename),
+                                                     suffixes_re)
+        for f in files:
+            m = re.match(regex, f)
+            if m:
+                return m.group(1)
+        # Nothing found
+        return None
+
+    @staticmethod
+    def __get_version(str_list, basename, regex_version = None):
+        if regex_version:
+            regex = r"^%s.*%s.*$" % (re.escape(basename), regex_version)
+        else:
+            regex = "%s.*[-_]([\d][^\/]*).*" % re.escape(basename)
+        for s in str_list:
+            m = re.match(regex, s)
+            if m:
+                return m.group(1)
+        # Nothing found
+        return None
+
+    @staticmethod
+    def _get_version_via_archive_dirname(files, basename, regex_version = None):
         """ detect version based tar'd directory name"""
         for f in filter(lambda x: x.endswith(suffixes), files):
             # handle tarfiles
             if tarfile.is_tarfile(f):
                 with tarfile.open(f) as tf:
-                    v = VersionDetector.__get_version(tf.getnames(), basename)
+                    v = VersionDetector.__get_version(tf.getnames(), basename,
+                                                      regex_version)
                     if v:
                         return v
             # handle zipfiles
@@ -280,15 +341,26 @@ if __name__ == '__main__':
     parser.add_argument('--version',
                         help='use given version string, do not detect it '
                         'from source files')
+    parser.add_argument('--release',
+                        help='use given release string, do not detect it '
+                        'from source files. only for rpm packages.')
     parser.add_argument('--basename', default="",
                         help='detect version based on the file name with '
                         'a given prefix')
     parser.add_argument('--file', action='append',
                         help='modify only this build description. '
                         'maybe used multiple times.')
+    parser.add_argument('--regex-version',
+                        help='use the given regular expression to '
+                        'autodetect the version.')
+    parser.add_argument('--regex-release',
+                        help='use the given regular expression to '
+                        'autodetect the release. only for rpm packages.')
     args = vars(parser.parse_args())
 
     version = args['version']
+
+    release = args['release']
 
     files_local = _get_local_files()
 
@@ -299,9 +371,15 @@ if __name__ == '__main__':
         sys.exit(-1)
 
     if not version:
-        version = VersionDetector._autodetect(files_local, args["basename"])
+        version = VersionDetector._autodetect(files_local, args["basename"], args["regex_version"])
 
     if not version:
+        sys.exit(-1)
+
+    if not release and args["regex_release"]:
+        release = ReleaseDetector._autodetect(files_local, args["basename"], args["regex_release"])
+
+    if not release and args["regex_release"]:
         sys.exit(-1)
 
     # if no files explicitly specified process whole directory
@@ -325,7 +403,10 @@ if __name__ == '__main__':
             _replace_spec_setup(filename, "version_unconverted")
         else:
             _replace_tag(filename, 'Version', version)
-        _replace_tag(filename, 'Release', "0")
+        if release:
+            _replace_tag(filename, 'Release', release)
+        else:
+            _replace_tag(filename, 'Release', "0")
 
     # handle debian packages
     for f in filter(lambda x: x.endswith(".dsc"), files):

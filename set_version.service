@@ -6,6 +6,15 @@ Can be used after download_url or tar_scm service.
   <parameter name="version">
     <description>Set version to this value, otherwise autodetection is running.</description>
   </parameter>
+  <parameter name="release">
+    <description>Set release to this value, otherwise autodetection is running. Only for RPM packages.</description>
+  </parameter>
+  <parameter name="regex-version">
+    <description>Use the given regular expression to autodetect the version.</description>
+  </parameter>
+  <parameter name="regex-release">
+    <description>Use the given regular expression to autodetect the release. Only for RPM packages.</description>
+  </parameter>
   <parameter name="basename">
     <description>Limit version detection to files which start with given name.</description>
   </parameter>
