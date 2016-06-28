@@ -6,6 +6,12 @@ Can be used after download_url or tar_scm service.
   <parameter name="version">
     <description>Set version to this value, otherwise autodetection is running.</description>
   </parameter>
+  <parameter name="release">
+    <description>Set release to this value.</description>
+  </parameter>
+  <parameter name="import">
+    <description>Use version and release string given in json file, do not detect it from source files.</description>
+  </parameter>
   <parameter name="basename">
     <description>Limit version detection to files which start with given name.</description>
   </parameter>

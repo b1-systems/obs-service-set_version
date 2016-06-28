@@ -16,6 +16,7 @@ from __future__ import print_function
 
 import argparse
 import glob
+import json
 import os
 import re
 import shutil
@@ -280,6 +281,11 @@ if __name__ == '__main__':
     parser.add_argument('--version',
                         help='use given version string, do not detect it '
                         'from source files')
+    parser.add_argument('--release',
+                        help='use given release string')
+    parser.add_argument('--import',
+                        help='use version and release string given in json '
+                        ' file, do not detect it from source files')
     parser.add_argument('--basename', default="",
                         help='detect version based on the file name with '
                         'a given prefix')
@@ -290,6 +296,8 @@ if __name__ == '__main__':
 
     version = args['version']
 
+    release = args['release']
+
     files_local = _get_local_files()
 
     outdir = args['outdir']
@@ -297,6 +305,14 @@ if __name__ == '__main__':
     if not outdir:
         print("no outdir specified")
         sys.exit(-1)
+
+    if args['import']:
+        info = open(os.path.basename(args['import']), 'r')
+        data = json.loads(info.read())
+        info.close()
+
+        version = data['version']
+        release = data['release']
 
     if not version:
         version = VersionDetector._autodetect(files_local, args["basename"])
@@ -325,18 +341,27 @@ if __name__ == '__main__':
             _replace_spec_setup(filename, "version_unconverted")
         else:
             _replace_tag(filename, 'Version', version)
-        _replace_tag(filename, 'Release', "0")
+        if release:
+            _replace_tag(filename, 'Release', release)
+        else:
+            _replace_tag(filename, 'Release', "0")
 
     # handle debian packages
     for f in filter(lambda x: x.endswith(".dsc"), files):
         filename = outdir + "/" + f
         shutil.copyfile(f, filename)
-        _replace_tag(filename, 'Version', version + "-0")
+        if release:
+          _replace_tag(filename, 'Version', version + "-" + release)
+        else:
+          _replace_tag(filename, 'Version', version + "-0")
 
     for f in filter(lambda x: x.endswith(("debian.changelog")), files):
         filename = outdir + "/" + f
         shutil.copyfile(f, filename)
-        _replace_debian_changelog_version(filename, version + "-0")
+        if release:
+          _replace_debian_changelog_version(filename, version + "-" + release)
+        else:
+          _replace_debian_changelog_version(filename, version + "-0")
 
     # handle arch linux PKGBUILD files
     # TODO: Handle the md5sums generation!
@@ -345,4 +370,7 @@ if __name__ == '__main__':
         shutil.copyfile(f, filename)
         _replace_tag(filename, "md5sums", "('SKIP')")
         _replace_tag(filename, "pkgver", version)
-        _replace_tag(filename, "pkgrel", "0")
+        if release:
+          _replace_tag(filename, "pkgrel", release)
+        else:
+          _replace_tag(filename, "pkgrel", "0")
