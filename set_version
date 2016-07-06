@@ -307,7 +307,7 @@ if __name__ == '__main__':
         sys.exit(-1)
 
     if args['import']:
-        info = open(os.path.basename(args['import']), 'r')
+        info = open(outdir + "/../" + os.path.basename(args['import']), 'r')
         data = json.loads(info.read())
         info.close()
 
